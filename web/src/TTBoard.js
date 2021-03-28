@@ -1,4 +1,5 @@
 import React, { useState,useEffect } from 'react';
+import GameMenu from "./GameMenu";
 
 
 function X(lineProps){
@@ -63,7 +64,7 @@ function Tile(props){
              onMouseEnter={() => setHover(true)}
              onMouseLeave={() => setHover(false)}
 
-             style={{width:'70px',height:'70px', background:'white', color:'black',
+             style={{width:'70px',height:'70px', background:props.background, color:'black',
             jusifyContent:'center',
             alignContent:'center',
             margin:2,
@@ -88,11 +89,10 @@ function Tile(props){
     )
 }
 
-const turnOrder = ["X","B","O","B"];
 
 function TBoard(props){
     const {showText,metaBoard, pos:[w,x]} = props
-    const {turn} = props.gameState;
+    const {turn,lastTurn} = props.gameState;
     const nextMove = turnOrder[turn]
     return (<div style={{...props.style,flex:1, marginTop:10,marginBottom:10 }}>
         {
@@ -102,7 +102,10 @@ function TBoard(props){
                         const item = props.board[y][z];
                         return (
                         <Tile showText={metaBoard[w][x][y][z].showText} display={item} key={y}
-                              onHover={item==="E"?nextMove:""}
+                              onHover={item==="E"?nextMove:""} background={
+                                  lastTurn.includes(strRep(w,x,y,z)) ?
+                                      "#FF7F7F" : "#00FFFFFF"
+                        }
                           onClick={()=>{
                             if(item==="E"){
                                 props.playMove(w,x,y,z,nextMove);
@@ -133,7 +136,11 @@ function TBoard(props){
    )
 }
 
+var allcells = null;
+
 function allCells(){
+    if(allcells !==null)
+        return allcells
     const cells = []
     for(var w=0; w<3; w++){
         for(var x=0; x<3; x++){
@@ -144,6 +151,7 @@ function allCells(){
             }
         }
     }
+    allcells = cells
     return cells;
 }
 
@@ -188,8 +196,19 @@ function vectorSub(v1,v2){
 function vectorAdd(v1,v2){
     return [v1[0] + v2[0], v1[1] + v2[1], v1[2] + v2[2], v1[3] + v2[3]]
 }
-function possibleLines(w,x,y,z){
 
+
+const seenLines = {}
+
+function strRep(w,x,y,z){
+    return `${w}${x}${y}${z}`
+}
+
+function possibleLines(w,x,y,z){
+    const key = strRep(w,x,y,z)
+    if((key in seenLines)){
+        return seenLines[key]
+    }
     function inRange(vec){
         return vec.every((x)=>(x < 3 && x >= 0))
     }
@@ -231,7 +250,7 @@ function possibleLines(w,x,y,z){
             }
         }
     }
-
+    seenLines[key] = lines
     return lines
 }
 
@@ -242,6 +261,26 @@ function boardCopy(boardOriginal){
     })
     return board
 }
+function shuffle(array) {
+    var currentIndex = array.length, temporaryValue, randomIndex;
+
+    // While there remain elements to shuffle...
+    while (0 !== currentIndex) {
+
+        // Pick a remaining element...
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex -= 1;
+
+        // And swap it with the current element.
+        temporaryValue = array[currentIndex];
+        array[currentIndex] = array[randomIndex];
+        array[randomIndex] = temporaryValue;
+    }
+
+    return array;
+}
+
+const turnOrder = ["X","B","O","B"];
 
 class TTBoard extends React.Component {
 
@@ -259,6 +298,7 @@ class TTBoard extends React.Component {
                 turn:0,
                     linesp1:0,
                 linesp2:0,
+                lastTurn:[]
             }
 
         }
@@ -273,8 +313,10 @@ class TTBoard extends React.Component {
         const xs = []
         const os = []
 
-        const currentPiece = turnOrder[this.state.gameState.turn]
-        const blockingPiece = ["O","O","X","X"][this.state.gameState.turn]
+
+        const blockOrder = ["O","O","X","X"]
+        const helpOrder = ["X","X","O","O"]
+        const blockingPiece = blockOrder[this.state.gameState.turn]
 
 
 
@@ -292,7 +334,7 @@ class TTBoard extends React.Component {
         }
 
 
-        var boardScore = (piece, blocking,board,setMetaHere=false) => {
+        var boardScore = (piece,helping, blocking,board,setMetaHere=false) => {
             const currentPieces = {X:xs,O:os}[piece];
             let totalScore = 0;
             let lines = 0;
@@ -305,10 +347,9 @@ class TTBoard extends React.Component {
             let myPossibleLines = 0;
             let theirPossibleLines = 0;
 
-            allCells().forEach((place)=>{
-                var placeScore = 0;
-                const linescores = []
-                    const pLines = possibleLines(...place)
+            const linescores = []
+            shuffle(allCells()).forEach((place)=>{
+                const pLines = possibleLines(...place)
                 pLines.forEach((line) => {
                     var sameCount = 0;
                     let blockPieces = 0;
@@ -316,12 +357,8 @@ class TTBoard extends React.Component {
                     let themblocked = 1;
                     line.forEach(([w, x, y, z]) => {
                         const cell = board[w][x][y][z]
-
-                        if (cell === piece && piece !== "B") {
+                        if (cell === helping) {
                             sameCount += 1
-                            if(sameCount > 1){
-                                console.log(cell,piece,w,x,y,z)
-                            }
                             themblocked = 0
                         } else if (cell === blocking) {
                             blockPieces += 1
@@ -333,7 +370,7 @@ class TTBoard extends React.Component {
                     });
                     const yourLine = sameCount * blocked;
                     const theirLine = themblocked * blockPieces;
-                    var lineScore = (yourLine ** 5) - (theirLine**4)
+                    var lineScore = (yourLine ** 4) - (theirLine**4)
                     if(theirLine === 3){
                         theirLines += 1
                     }
@@ -343,30 +380,38 @@ class TTBoard extends React.Component {
                     if(lineScore > 30){
                         console.log(place,line,lineScore, piece,blockingPiece,sameCount,blockPieces,blocked,themblocked,"AAAAAAAAAAAAA")
                     }
-                    if (line[0][0] === 0 && line[1][0] === 0)
-                        linescores.push({lineScore, line, sameCount, blockPieces, blocked, themblocked})
-                    placeScore += lineScore
+
+                    //if (line[0][0] === 0 && line[1][0] === 0)
+                    //    linescores.push({lineScore, line, sameCount, blockPieces, blocked, themblocked})
+
+                    linescores.push([yourLine,theirLine])
                 })
-                cellscores[place.toString()] = {lines:linescores, placeScore}
-                totalScore += placeScore
-                if(setMetaHere && false)
-                    setMeta(place[0],place[1],place[2],place[3],"showText",placeScore)
+                //cellscores[place.toString()] = {lines:linescores, placeScore}
+                //totalScore += placeScore
+                //if(setMetaHere && false)
+                //    setMeta(place[0],place[1],place[2],place[3],"showText",placeScore)
             })
             //console.log([lines,totalScore],bScore)
             yourLines /= 6
             theirLines /= 6
+
             if(setMetaHere){
                 setMeta(0,0,0,0,"boardScore", totalScore)
-                setMeta(0,0,0,0,"X", blocking==="O" ? yourLines : theirLines)
-                setMeta(0,0,0,0,"O", blocking!=="O" ? yourLines : theirLines)
-
+                if(piece!="B"){
+                    setMeta(0,0,0,0,"X", blocking==="O" ? yourLines : theirLines)
+                    setMeta(0,0,0,0,"O", blocking!=="O" ? yourLines : theirLines)
+                }
+                /*this.setState((state)=>{
+                    state.gameState[blockingPiece==="O" ?"linesp1" :"linesp2"] = lines
+                })*/
             }
 
+            totalScore = linescores.reduce((acc,[yourLine,theirLine])=>(acc + (yourLine**(4)) - (theirLine**(4+yourLines - theirLines))),0)
 
             return [lines,totalScore]
         }
-
-        var setIndex = (w,x,y,z,newItem,then=()=>{}) =>{
+        // set before toggling turn!
+        var setIndex = (w,x,y,z,newItem,then=()=>{}) => {
             console.log("SETINDEX", w,x,y,z, newItem, this.state.gameState.turn)
             if(newItem === "X"){
                 xs.push([w,x,y,z])
@@ -374,13 +419,14 @@ class TTBoard extends React.Component {
                 os.push([w,x,y,z])
                 os.push([w,x,y,z])
             }
+
             this.setState((state)=>{
                 state.board[w][x][y][z] = newItem
                 return state
             },then)
         }
 
-        function boardWith(placePieces){
+        function boardWith(board,placePieces){
             let boardCopyA = boardCopy(board)
             placePieces.forEach(([w,x,y,z,p])=>{
                 boardCopyA[w][x][y][z] = p
@@ -388,9 +434,9 @@ class TTBoard extends React.Component {
             return boardCopyA
         }
 
-        function playableMoves(){
+        function playableMoves(forBoard){
             return allCells().filter(([w,x,y,z])=>(
-                board[w][x][y][z] === "E"
+                forBoard[w][x][y][z] === "E"
             ))
 
         }
@@ -399,42 +445,52 @@ class TTBoard extends React.Component {
             var move = null
             const turn = this.state.gameState.turn
             const currentPiece = turnOrder[turn]
-            const blockingPiece = "X"
-            playableMoves().forEach(([w,x,y,z])=>{
-                const score = boardScore(currentPiece,blockingPiece,boardWith([[w,x,y,z,currentPiece]]),false)
+            const blockingPiece = blockOrder[turn]
+            const currentSide = helpOrder[turn]
+            playableMoves(this.state.board).forEach(([w,x,y,z])=>{
+                const score = boardScore(currentPiece,currentSide,blockingPiece,boardWith(this.state.board,[[w,x,y,z,currentPiece]]),false)
                 console.log(w,x,y,z,score,currentPiece)
-
                 const [lines,moveScore] = score
                 if(moveScore > max){
-
                     max = moveScore
                     move = [w,x,y,z]
                 }
-                this.setState((state)=>{
-                    state.gameState[blockingPiece==="O" ?"linesp1" :"linesp2"] = lines
-                })
             })
             console.log("BEST SCORE", max,move)
             return move
         }
         const takeAITurn = ()=>{
             const piece = turnOrder[this.state.gameState.turn]
-            console.log("taking AI TURN for " + piece,this.state.gameState.turn)
-            playMove(...bestAIMove(piece),piece)
+            //console.log("taking AI TURN for " + piece,this.state.gameState.turn)
+            const turnLoc = bestAIMove(piece)
+            this.setState((state)=>{
+                const lastTurn = this.state.gameState.lastTurn
+                lastTurn.push(strRep(...turnLoc))
+
+                if(lastTurn.length > 3){
+                    lastTurn.shift()
+                }
+
+                return state
+            })
+            playMove(...turnLoc,piece)
         }
 
-
+        const isAITurn = (i) =>{
+            return ai && [2,3].includes(i)
+        }
 
         //if(board[1][1][1][1] !== "B")
         //    setIndex(1,1,1,1,"B")
         const playMove = (w, x, y, z, newItem,then=()=>{})=>{
             console.log(w,x,y,z,newItem, "placed")
             setIndex(w,x,y,z,newItem,()=>{
-                boardScore(currentPiece,blockingPiece,this.state.board,true)
                 toggleTurn(()=> {
+                    const turn = this.state.gameState.turn
+                    boardScore(turnOrder[turn],helpOrder[turn],blockOrder[turn],this.state.board,true)
                     then()
                     console.log("turn toggled to be",this.state.gameState.turn)
-                    if (ai && [2,3].includes(this.state.gameState.turn))
+                    if (isAITurn(turn))
                         takeAITurn()
                 })
             })
@@ -505,5 +561,7 @@ class TTBoard extends React.Component {
     }
 
 }
+
+
 
 export default TTBoard
